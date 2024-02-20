@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "chat_room_common", 
+    "chat_room_client", 
+    "chat_room_server"
+]
