@@ -1,36 +1,58 @@
 mod handler;
 
-use std::{
-    collections::HashMap,
-    convert::Infallible,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, convert::Infallible, sync::Arc};
+use tokio::sync::RwLock;
 
-use handler::LoggedUsers;
+use chat_room_common::model::{LoggedUsers, Rooms};
+use handler::room::join_room_handler;
+use handler::user::{login_handler, logout_handler};
+use log::LevelFilter;
+use simple_logger::SimpleLogger;
 use warp::Filter;
 
 #[tokio::main]
 async fn main() {
-    let logged_users: LoggedUsers = Arc::new(Mutex::new(HashMap::new()));
+    // Set up logging
+    SimpleLogger::new()
+        .with_level(LevelFilter::Info)
+        .init()
+        .unwrap();
 
-    let login_routes = warp::path("login")
+    // Set up shared state
+    let logged_users: LoggedUsers = Arc::new(RwLock::new(HashMap::new()));
+    let rooms: Rooms = Arc::new(RwLock::new(HashMap::new()));
+
+    // Routes and handlers
+    // User
+    let login_route = warp::path("login")
         // POST /login
         .and(warp::post())
         .and(warp::body::json())
         .and(with_logged_users(logged_users.clone()))
-        .and_then(handler::login_handler);
+        .and_then(login_handler);
 
-    let logout_routes = warp::path("logout")
+    let logout_route = warp::path("logout")
         // POST /logout
         .and(warp::post())
         .and(warp::body::json())
         .and(with_logged_users(logged_users.clone()))
-        .and_then(handler::logout_handler);
+        .and(with_rooms(rooms.clone()))
+        .and_then(logout_handler);
 
-    let routes = login_routes
-        .or(logout_routes)
+    // Rooms
+    let join_room_route = warp::path!("room" / "join")
+        // POST /room/join
+        .and(warp::post())
+        .and(warp::body::json())
+        .and(with_logged_users(logged_users.clone()))
+        .and(with_rooms(rooms.clone()))
+        .and_then(join_room_handler);
+
+    // Serve routes
+    let routes = login_route
+        .or(logout_route)
+        .or(join_room_route)
         .with(warp::cors().allow_any_origin());
-
     warp::serve(routes).run(([127, 0, 0, 1], 8000)).await;
 }
 
@@ -38,4 +60,8 @@ fn with_logged_users(
     users: LoggedUsers,
 ) -> impl Filter<Extract = (LoggedUsers,), Error = Infallible> + Clone {
     warp::any().map(move || users.clone())
+}
+
+fn with_rooms(rooms: Rooms) -> impl Filter<Extract = (Rooms,), Error = Infallible> + Clone {
+    warp::any().map(move || rooms.clone())
 }

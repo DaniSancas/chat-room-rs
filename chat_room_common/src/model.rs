@@ -1,5 +1,6 @@
-use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
+use std::{collections::HashMap, sync::Arc};
+
+use tokio::sync::{mpsc, RwLock};
 use warp::ws::Message;
 
 pub struct User {
@@ -8,18 +9,11 @@ pub struct User {
     pub sender: Option<mpsc::UnboundedSender<std::result::Result<Message, warp::Error>>>,
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct LoginRequest {
-    pub user_name: String,
+pub struct Room {
+    pub users: Vec<String>,
 }
 
-#[derive(Serialize, Debug)]
-pub struct LoginResponse {
-    pub token: String,
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct LogoutRequest {
-    pub user_name: String,
-    pub token: String,
-}
+pub type UserMap = HashMap<String, User>;
+pub type LoggedUsers = Arc<RwLock<UserMap>>;
+pub type RoomMap = HashMap<String, Room>;
+pub type Rooms = Arc<RwLock<RoomMap>>;

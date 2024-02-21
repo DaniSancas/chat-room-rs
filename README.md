@@ -13,6 +13,8 @@ https://blog.logrocket.com/build-websocket-server-with-rust/
 
 ## Endpoints
 
+### User
+
 ```sh
 # Login into the system
 POST /login
@@ -27,4 +29,11 @@ params: { "user_name": "<user_name>", "token": "<token>" }
 response: 200 | 403
 ```
 
+### Room
 
+```sh
+# Create or join an already created room
+POST /room/join
+params: { "user_name": "<user_name>", "token": "<token>", "room_name": "<room_name>" }
+response: 200 | 403
+```
