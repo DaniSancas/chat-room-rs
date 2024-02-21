@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use tokio::sync::{mpsc, RwLock};
 use warp::ws::Message;
@@ -10,7 +13,7 @@ pub struct User {
 }
 
 pub struct Room {
-    pub users: Vec<String>,
+    pub users: HashSet<String>,
 }
 
 pub type UserMap = HashMap<String, User>;

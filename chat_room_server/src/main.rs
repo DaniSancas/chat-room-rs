@@ -4,7 +4,7 @@ use std::{collections::HashMap, convert::Infallible, sync::Arc};
 use tokio::sync::RwLock;
 
 use chat_room_common::model::{LoggedUsers, Rooms};
-use handler::room::join_room_handler;
+use handler::room::{join_handler, leave_handler};
 use handler::user::{login_handler, logout_handler};
 use log::LevelFilter;
 use simple_logger::SimpleLogger;
@@ -46,12 +46,21 @@ async fn main() {
         .and(warp::body::json())
         .and(with_logged_users(logged_users.clone()))
         .and(with_rooms(rooms.clone()))
-        .and_then(join_room_handler);
+        .and_then(join_handler);
+
+    let leave_room_route = warp::path!("room" / "leave")
+        // POST /room/leave
+        .and(warp::post())
+        .and(warp::body::json())
+        .and(with_logged_users(logged_users.clone()))
+        .and(with_rooms(rooms.clone()))
+        .and_then(leave_handler);
 
     // Serve routes
     let routes = login_route
         .or(logout_route)
         .or(join_room_route)
+        .or(leave_room_route)
         .with(warp::cors().allow_any_origin());
     warp::serve(routes).run(([127, 0, 0, 1], 8000)).await;
 }

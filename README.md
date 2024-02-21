@@ -37,3 +37,10 @@ POST /room/join
 params: { "user_name": "<user_name>", "token": "<token>", "room_name": "<room_name>" }
 response: 200 | 403
 ```
+
+```sh
+# Leave a room
+POST /room/leave
+params: { "user_name": "<user_name>", "token": "<token>", "room_name": "<room_name>" }
+response: 200
+```

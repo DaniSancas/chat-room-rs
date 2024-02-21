@@ -1,4 +1,5 @@
 use super::Result;
+use crate::handler::room::remove_user_from_all_rooms;
 use chat_room_common::model::{LoggedUsers, Rooms, User};
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
@@ -21,14 +22,36 @@ pub struct LogoutRequest {
     pub token: String,
 }
 
-pub async fn login_handler(body: LoginRequest, users: LoggedUsers) -> Result<impl Reply> {
+#[derive(Deserialize, Serialize)]
+pub struct ErrorResponse {
+    pub error: String,
+}
+
+pub async fn login_handler(body: LoginRequest, logged_users: LoggedUsers) -> Result<impl Reply> {
     let user_name = body.user_name;
     let token = Uuid::new_v4().simple().to_string();
 
-    login_user(&user_name, &token, users).await;
-    Ok(json(&LoginResponse {
-        token: token.clone(),
-    }))
+    let mut users_lock = logged_users.write().await;
+    match users_lock.get(&user_name) {
+        Some(_) => {
+            info!("User {} already logged in", user_name);
+            Ok(json(&ErrorResponse {
+                error: "User already logged in".to_string(),
+            }))
+        }
+        None => {
+            let user = User {
+                user_name: user_name.to_string(),
+                token: token.to_string(),
+                sender: None,
+            };
+            users_lock.insert(user_name.to_string(), user);
+            info!("User {} logged in", user_name);
+            Ok(json(&LoginResponse {
+                token: token.clone(),
+            }))
+        }
+    }
 }
 
 pub async fn logout_handler(
@@ -44,16 +67,13 @@ pub async fn logout_handler(
         Some(user) => {
             if user.token == token {
                 // Remove user from rooms
-                let mut rooms_lock = rooms.write().await;
-                for room in rooms_lock.values_mut() {
-                    room.users.retain(|u| u != &user_name);
-                }
+                remove_user_from_all_rooms(&user_name, rooms).await;
                 info!("User {} left all rooms", user_name);
 
                 // Remove user from logged users
                 users_lock.remove(&user_name);
                 info!("User {} logged out", user_name);
-                return Ok(StatusCode::OK);
+                Ok(StatusCode::OK)
             } else {
                 warn!("Wrong token for user {}", user_name);
                 Ok(StatusCode::UNAUTHORIZED)
@@ -62,24 +82,6 @@ pub async fn logout_handler(
         None => {
             warn!("User {} was not logged in", user_name);
             Ok(StatusCode::OK)
-        }
-    }
-}
-
-async fn login_user(user_name: &str, token: &str, logged_users: LoggedUsers) {
-    let mut users_lock = logged_users.write().await;
-    match users_lock.get(user_name) {
-        Some(_) => {
-            info!("User {} already logged in", user_name);
-        }
-        None => {
-            let user = User {
-                user_name: user_name.to_string(),
-                token: token.to_string(),
-                sender: None,
-            };
-            users_lock.insert(user_name.to_string(), user);
-            info!("User {} logged in", user_name);
         }
     }
 }
