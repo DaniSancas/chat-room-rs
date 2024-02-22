@@ -1,7 +1,6 @@
 use super::Result;
-use crate::handler::room::remove_user_from_all_rooms;
+use crate::{handler::room::remove_user_from_all_rooms, helper::*};
 use chat_room_common::model::{LoggedUsers, Rooms, User};
-use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use warp::{http::StatusCode, reply::json, Reply};
@@ -17,7 +16,7 @@ pub struct LoginResponse {
 }
 
 #[derive(Deserialize, Serialize)]
-pub struct LogoutRequest {
+pub struct AuthRequest {
     pub user_name: String,
     pub token: String,
 }
@@ -34,7 +33,7 @@ pub async fn login_handler(body: LoginRequest, logged_users: LoggedUsers) -> Res
     let mut users_lock = logged_users.write().await;
     match users_lock.get(&user_name) {
         Some(_) => {
-            info!("User {} already logged in", user_name);
+            log_user_already_logged_in(&user_name);
             Ok(json(&ErrorResponse {
                 error: "User already logged in".to_string(),
             }))
@@ -46,7 +45,7 @@ pub async fn login_handler(body: LoginRequest, logged_users: LoggedUsers) -> Res
                 sender: None,
             };
             users_lock.insert(user_name.to_string(), user);
-            info!("User {} logged in", user_name);
+            log_user_logged_in(&user_name);
             Ok(json(&LoginResponse {
                 token: token.clone(),
             }))
@@ -55,7 +54,7 @@ pub async fn login_handler(body: LoginRequest, logged_users: LoggedUsers) -> Res
 }
 
 pub async fn logout_handler(
-    body: LogoutRequest,
+    body: AuthRequest,
     logged_users: LoggedUsers,
     rooms: Rooms,
 ) -> Result<impl Reply> {
@@ -68,19 +67,19 @@ pub async fn logout_handler(
             if user.token == token {
                 // Remove user from rooms
                 remove_user_from_all_rooms(&user_name, rooms).await;
-                info!("User {} left all rooms", user_name);
+                log_all_rooms_left(&user_name);
 
                 // Remove user from logged users
                 users_lock.remove(&user_name);
-                info!("User {} logged out", user_name);
+                log_user_logged_out(&user_name);
                 Ok(StatusCode::OK)
             } else {
-                warn!("Wrong token for user {}", user_name);
+                log_user_not_authorized(&user_name);
                 Ok(StatusCode::UNAUTHORIZED)
             }
         }
         None => {
-            warn!("User {} was not logged in", user_name);
+            log_user_not_logged_in(&user_name);
             Ok(StatusCode::OK)
         }
     }

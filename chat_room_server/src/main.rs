@@ -1,5 +1,7 @@
 mod handler;
+mod helper;
 
+use handler::websocket::streaming_handler;
 use std::{collections::HashMap, convert::Infallible, sync::Arc};
 use tokio::sync::RwLock;
 
@@ -56,11 +58,22 @@ async fn main() {
         .and(with_rooms(rooms.clone()))
         .and_then(leave_handler);
 
+    let ws_route = warp::path("streaming")
+        // GET /streaming/:user_name/:token
+        .and(warp::get())
+        .and(warp::ws())
+        .and(warp::path::param())
+        .and(warp::path::param())
+        .and(with_logged_users(logged_users.clone()))
+        .and(with_rooms(rooms.clone()))
+        .and_then(streaming_handler);
+
     // Serve routes
     let routes = login_route
         .or(logout_route)
         .or(join_room_route)
         .or(leave_room_route)
+        .or(ws_route)
         .with(warp::cors().allow_any_origin());
     warp::serve(routes).run(([127, 0, 0, 1], 8000)).await;
 }
