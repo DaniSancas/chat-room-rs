@@ -10,6 +10,7 @@ use serde_json::from_str;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
+use uuid::Uuid;
 use warp::ws::{Message, WebSocket};
 use warp::Reply;
 
@@ -116,10 +117,15 @@ pub async fn user_connection(ws: WebSocket, logged_users: LoggedUsers, rooms: Ro
         }
     }));
 
+    // Generate a unique identifier for the user's sender channel
+    // This is used to remove the sender channel when the user disconnects
+    let sender_uuid = Uuid::new_v4().simple().to_string();
+
     // Initialize user's channel
     if let Some(user) = logged_users.write().await.get_mut(&user_name) {
-        user.sender = Some(user_channel_sender);
+        user.sender.insert(sender_uuid.clone(), user_channel_sender);
         log_user_connected_to_ws(&user_name);
+        log_current_user_connections(&user_name, user.sender.len());
     }
 
     // Listen for messages from the user
@@ -135,9 +141,11 @@ pub async fn user_connection(ws: WebSocket, logged_users: LoggedUsers, rooms: Ro
     }
 
     // User disconnected
+    // Remove the sender channel related to this websocket connection
     if let Some(user) = logged_users.write().await.get_mut(&user_name) {
-        user.sender = None;
+        user.sender.remove(&sender_uuid);
         log_user_disconnected_from_ws(&user_name);
+        log_remaining_connections_for_user(&user_name, user.sender.len());
     }
 }
 
@@ -167,12 +175,13 @@ async fn send_message_to_the_room(
 
     // Send message to all users in the room
     if let Some(room) = rooms.read().await.get(&incoming_msg.room_name) {
-        let logged_users_lock = logged_users.read().await;
-        room.users.iter().for_each(|logged_user| {
-            if logged_user != user_name {
-                // For each user in the room that is not the sender, send the message to their sender channel
+        if room.users.contains(user_name) {
+            // Only send the message if the user is in the room
+            let logged_users_lock = logged_users.read().await;
+            room.users.iter().for_each(|logged_user| {
+                // For each user in the room,, get all sender channels it has and send the message (including the sender's own channels)
                 if let Some(user) = logged_users_lock.get(logged_user) {
-                    if let Some(sender) = &user.sender {
+                    user.sender.values().for_each(|sender| {
                         let outgoing_communication = OutgoingCommunication {
                             communication_type: "message".to_string(),
                             content: CommunicationContent::OutgoingMessage(OutgoingMessage {
@@ -186,10 +195,12 @@ async fn send_message_to_the_room(
                         ))) {
                             log_error_sending_ws_message(e.to_string().as_str());
                         }
-                    }
+                    });
                 }
-            }
-        });
+            });
+        } else {
+            log_user_not_joined_room(&incoming_msg.room_name, user_name);
+        }
     } else {
         log_room_does_not_exist(&incoming_msg.room_name);
     }

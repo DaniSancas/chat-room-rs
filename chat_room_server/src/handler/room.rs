@@ -23,9 +23,7 @@ pub async fn join_handler(
     let token = body.token;
     let room_name = body.room_name;
 
-    let logged_users_lock = logged_users.read().await;
-
-    match logged_users_lock.get(&user_name) {
+    match logged_users.read().await.get(&user_name) {
         Some(user) => {
             if user.token == token {
                 let mut rooms_lock = rooms.write().await;
@@ -69,8 +67,7 @@ pub async fn leave_handler(
     let token = body.token;
     let room_name = body.room_name;
 
-    let logged_users_lock = logged_users.read().await;
-    if let Some(user) = logged_users_lock.get(&user_name) {
+    if let Some(user) = logged_users.read().await.get(&user_name) {
         if user.token == token {
             remove_user_from_single_room(&user_name, &room_name, rooms).await;
             Ok(StatusCode::OK)

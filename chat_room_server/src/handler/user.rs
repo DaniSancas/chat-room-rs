@@ -1,6 +1,6 @@
 use super::Result;
 use crate::{handler::room::remove_user_from_all_rooms, helper::*};
-use chat_room_common::model::{LoggedUsers, Rooms, User};
+use chat_room_common::model::{LoggedUsers, Rooms, SenderMap, User};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use warp::{http::StatusCode, reply::json, Reply};
@@ -42,7 +42,7 @@ pub async fn login_handler(body: LoginRequest, logged_users: LoggedUsers) -> Res
             let user = User {
                 user_name: user_name.to_string(),
                 token: token.to_string(),
-                sender: None,
+                sender: SenderMap::new(),
             };
             users_lock.insert(user_name.to_string(), user);
             log_user_logged_in(&user_name);

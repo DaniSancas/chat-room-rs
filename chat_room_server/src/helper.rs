@@ -56,6 +56,14 @@ pub fn log_user_disconnected_from_ws(user_name: &str) {
     info!("User {} disconnected from websocket", user_name);
 }
 
+pub fn log_current_user_connections(user_name: &str, connections: usize) {
+    info!("User {} has {} connections", user_name, connections);
+}
+
+pub fn log_remaining_connections_for_user(user_name: &str, remaining: usize) {
+    info!("User {} has {} remaining connections", user_name, remaining);
+}
+
 pub fn log_error_receiving_ws_message(user_name: &str, e: &str) {
     error!(
         "Error receiving websocket message for user {}: {}",
@@ -78,6 +86,11 @@ pub fn log_initiating_ws_connection() {
 pub fn log_closing_ws_connection(user_name: &str) {
     info!("Closing websocket connection for user {}...", user_name);
 }
+
 pub fn log_error_parsing_incoming_message(e: &str) {
     error!("Error parsing incoming message: {}", e);
+}
+
+pub fn log_user_not_joined_room(user_name: &str, room_name: &str) {
+    warn!("User {} not joined room {}", user_name, room_name);
 }
