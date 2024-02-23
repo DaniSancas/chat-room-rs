@@ -71,8 +71,8 @@ pub fn log_received_ws_message_not_str(msg: &warp::ws::Message) {
     warn!("Received websocket message that is not a string: {:?}", msg);
 }
 
-pub fn log_initiating_ws_connection(user_name: &str) {
-    info!("Initiating websocket connection for user {}...", user_name);
+pub fn log_initiating_ws_connection() {
+    info!("Initiating websocket connection...");
 }
 
 pub fn log_closing_ws_connection(user_name: &str) {

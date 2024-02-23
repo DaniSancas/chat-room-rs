@@ -59,11 +59,9 @@ async fn main() {
         .and_then(leave_handler);
 
     let ws_route = warp::path("streaming")
-        // GET /streaming/:user_name/:token
+        // GET /streaming
         .and(warp::get())
         .and(warp::ws())
-        .and(warp::path::param())
-        .and(warp::path::param())
         .and(with_logged_users(logged_users.clone()))
         .and(with_rooms(rooms.clone()))
         .and_then(streaming_handler);

@@ -1,7 +1,9 @@
 use crate::helper::*;
 
 use super::Result;
+use crate::handler::user::AuthRequest;
 use chat_room_common::model::{LoggedUsers, Rooms};
+use futures::stream::SplitStream;
 use futures::{FutureExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
@@ -27,53 +29,84 @@ pub struct OutgoingMessage {
 #[derive(Deserialize, Serialize)]
 pub struct OutgoingCommunication {
     pub communication_type: String,
-    pub content: OutgoingMessage,
+    pub content: CommunicationContent,
+}
+
+#[derive(Deserialize, Serialize)]
+pub enum CommunicationContent {
+    OutgoingMessage(OutgoingMessage),
 }
 
 pub async fn streaming_handler(
     ws: warp::ws::Ws,
-    user_name: String,
-    token: String,
     logged_users: LoggedUsers,
     rooms: Rooms,
 ) -> Result<impl Reply> {
-    log_initiating_ws_connection(&user_name);
-    let is_user_valid = match logged_users.read().await.get(&user_name) {
-        Some(user) => {
-            if user.token == token {
-                true
-            } else {
-                log_user_not_authorized(&user_name);
-                false
+    log_initiating_ws_connection();
+
+    Ok(ws.on_upgrade(move |socket| user_connection(socket, logged_users.clone(), rooms.clone())))
+}
+
+async fn get_username_from_first_message(
+    user_ws_rcv: &mut SplitStream<WebSocket>,
+    logged_users: &LoggedUsers,
+) -> Option<String> {
+    let logged_users_lock = logged_users.read().await;
+
+    user_ws_rcv
+        .next()
+        .await
+        .and_then(|first_message| match first_message {
+            Ok(msg) => Some(msg),
+            Err(e) => {
+                log_error_receiving_ws_message("unknown", e.to_string().as_str());
+                None
             }
-        }
+        })
+        .and_then(|msg| match msg.to_str() {
+            Ok(text) => Some(text.to_string()),
+            Err(_) => {
+                log_received_ws_message_not_str(&msg);
+                None
+            }
+        })
+        .and_then(|message| match from_str::<AuthRequest>(message.as_str()) {
+            Ok(auth) => Some(auth),
+            Err(e) => {
+                log_error_parsing_incoming_message(e.to_string().as_str());
+                None
+            }
+        })
+        .and_then(|auth| match logged_users_lock.get(&auth.user_name) {
+            Some(user) => {
+                if user.token == auth.token {
+                    Some(auth.user_name)
+                } else {
+                    log_user_not_authorized(&auth.user_name);
+                    None
+                }
+            }
+            None => {
+                log_user_not_logged_in(&auth.user_name);
+                None
+            }
+        })
+}
+
+pub async fn user_connection(ws: WebSocket, logged_users: LoggedUsers, rooms: Rooms) {
+    // Split the WebSocket into a sender and receive of messages
+    let (user_ws_sender, mut user_ws_rcv) = ws.split();
+
+    let option_user_name = get_username_from_first_message(&mut user_ws_rcv, &logged_users).await;
+
+    let user_name = match option_user_name {
+        Some(user_name) => user_name,
         None => {
-            log_user_not_logged_in(&user_name);
-            false
+            log_error_receiving_ws_message("unknown", "no message received");
+            return;
         }
     };
 
-    if is_user_valid {
-        Ok(ws.on_upgrade(move |socket| {
-            user_connection(
-                socket,
-                user_name.clone(),
-                logged_users.clone(),
-                rooms.clone(),
-            )
-        }))
-    } else {
-        Err(warp::reject::not_found())
-    }
-}
-
-pub async fn user_connection(
-    ws: WebSocket,
-    user_name: String,
-    logged_users: LoggedUsers,
-    rooms: Rooms,
-) {
-    let (user_ws_sender, mut user_ws_rcv) = ws.split();
     let (user_channel_sender, client_rcv) = mpsc::unbounded_channel();
     let client_channel_rcv = UnboundedReceiverStream::new(client_rcv);
 
@@ -142,11 +175,11 @@ async fn send_message_to_the_room(
                     if let Some(sender) = &user.sender {
                         let outgoing_communication = OutgoingCommunication {
                             communication_type: "message".to_string(),
-                            content: OutgoingMessage {
+                            content: CommunicationContent::OutgoingMessage(OutgoingMessage {
                                 user_name: user_name.to_string(),
                                 room_name: incoming_msg.room_name.clone(),
                                 message: incoming_msg.message.clone(),
-                            },
+                            }),
                         };
                         if let Err(e) = sender.send(Ok(Message::text(
                             serde_json::to_string(&outgoing_communication).unwrap(),
